@@ -3,7 +3,7 @@
 ransomtest - Safe ransomware simulator (educational & sandboxed).
 
 - Only operates inside a sandbox directory (default: lab_files/).
-- Does NOT modify or delete original files.
+- Does NOT modify or delete original files by default.
 - Uses simple, reversible text transforms (NOT real cryptography).
 """
 
@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 from datetime import datetime, timezone
 import hashlib
+import json
 
 from crypto_sim.simple_transform import transform_content, reverse_transform_content
 
@@ -74,10 +75,17 @@ def parse_args() -> argparse.Namespace:
     )
 
     parser.add_argument(
-    "--overwrite-original",
-    action="store_true",
-    help="WARNING: Overwrite original files in lab_files/ with transformed content."
-)
+        "--overwrite-original",
+        action="store_true",
+        help="WARNING: Overwrite original files in lab_files/ with transformed content.",
+    )
+
+    parser.add_argument(
+        "--log-format",
+        choices=["text", "json"],
+        default="text",
+        help="Format for simulation_log.txt: 'text' (default) or 'json' (JSON lines).",
+    )
 
     return parser.parse_args()
 
@@ -90,17 +98,28 @@ def sha256_of_text(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
-def log_line(reports_dir: Path, message: str) -> None:
+def log_line(reports_dir: Path, data: dict, log_format: str = "text") -> None:
     """
-    Append a log line with timestamp to reports/simulation_log.txt
+    Append a log line to reports/simulation_log.txt.
+
+    - If log_format == "text": human-readable with key=value pairs.
+    - If log_format == "json": one JSON object per line (JSONL).
     """
     reports_dir.mkdir(parents=True, exist_ok=True)
     log_file = reports_dir / "simulation_log.txt"
-    # timezone-aware UTC timestamp
+
     timestamp = datetime.now(timezone.utc).isoformat()
-    line = f"{timestamp} | {message}\n"
+    record = {"timestamp": timestamp, **data}
+
+    if log_format == "json":
+        line = json.dumps(record, ensure_ascii=False)
+    else:
+        # text format: timestamp | key=value | key2=value2 ...
+        kv_parts = [f"{k}={v}" for k, v in data.items()]
+        line = f"{timestamp} | " + " | ".join(kv_parts)
+
     with log_file.open("a", encoding="utf-8") as f:
-        f.write(line)
+        f.write(line + "\n")
 
 
 def verbose_print(enabled: bool, message: str) -> None:
@@ -116,8 +135,8 @@ def simulate_encrypt(
     dry_run: bool,
     verbose: bool,
     overwrite_original: bool,
+    log_format: str,
 ) -> None:
-    
     if not target_dir.is_dir():
         print(f"[ERROR] Target directory does not exist or is not a directory: {target_dir}")
         sys.exit(1)
@@ -148,14 +167,40 @@ def simulate_encrypt(
             original_content = path.read_text(encoding="utf-8", errors="ignore")
         except Exception as e:
             verbose_print(verbose, f"[ERROR] Could not read {path}: {e}")
-            log_line(reports_dir, f"ERROR | action=read | file={path} | error={e}")
+            log_line(
+                reports_dir,
+                {
+                    "event": "ERROR",
+                    "action": "read",
+                    "file": str(path),
+                    "error": str(e),
+                    "mode": "encrypt",
+                },
+                log_format,
+            )
             continue
 
         # DFIR-style metadata
         orig_size = len(original_content.encode("utf-8"))
         orig_hash = sha256_of_text(original_content)
 
-        transformed_content = transform_content(original_content, transform_name)
+        try:
+            transformed_content = transform_content(original_content, transform_name)
+        except Exception as e:
+            verbose_print(verbose, f"[ERROR] Transform failed for {path}: {e}")
+            log_line(
+                reports_dir,
+                {
+                    "event": "ERROR",
+                    "action": "transform",
+                    "file": str(path),
+                    "transform": transform_name,
+                    "error": str(e),
+                    "mode": "encrypt",
+                },
+                log_format,
+            )
+            continue
 
         enc_size = len(transformed_content.encode("utf-8"))
         enc_hash = sha256_of_text(transformed_content)
@@ -167,19 +212,63 @@ def simulate_encrypt(
                 verbose_print(verbose, f"[ERROR] Could not write {enc_path}: {e}")
                 log_line(
                     reports_dir,
-                    f"ERROR | action=write_encrypted | file={enc_path} | error={e}",
+                    {
+                        "event": "ERROR",
+                        "action": "write_encrypted",
+                        "file": str(enc_path),
+                        "error": str(e),
+                        "mode": "encrypt",
+                    },
+                    log_format,
                 )
                 continue
 
         log_line(
             reports_dir,
-            (
-                "ENCRYPT | "
-                f"src_file={path} | dst_file={enc_path} | transform={transform_name} | "
-                f"orig_size={orig_size} | orig_sha256={orig_hash} | "
-                f"enc_size={enc_size} | enc_sha256={enc_hash} | dry_run={dry_run}"
-            ),
+            {
+                "event": "ENCRYPT",
+                "src_file": str(path),
+                "dst_file": str(enc_path),
+                "transform": transform_name,
+                "orig_size": orig_size,
+                "orig_sha256": orig_hash,
+                "enc_size": enc_size,
+                "enc_sha256": enc_hash,
+                "dry_run": dry_run,
+                "mode": "encrypt",
+            },
+            log_format,
         )
+
+        # Optional overwrite of original inside lab_files/
+        if overwrite_original and not dry_run:
+            try:
+                path.write_text(transformed_content, encoding="utf-8")
+                verbose_print(verbose, f"[OVERWRITE] Original file overwritten: {path}")
+                log_line(
+                    reports_dir,
+                    {
+                        "event": "OVERWRITE",
+                        "file": str(path),
+                        "transform": transform_name,
+                        "sha256": enc_hash,
+                        "mode": "encrypt",
+                    },
+                    log_format,
+                )
+            except Exception as e:
+                verbose_print(verbose, f"[ERROR] Could not overwrite {path}: {e}")
+                log_line(
+                    reports_dir,
+                    {
+                        "event": "ERROR",
+                        "action": "overwrite_original",
+                        "file": str(path),
+                        "error": str(e),
+                        "mode": "encrypt",
+                    },
+                    log_format,
+                )
 
     # Ransom note educativa
     ransom_note_path = target_dir / "README_RECOVER.txt"
@@ -188,7 +277,8 @@ def simulate_encrypt(
         "Your files in this sandbox have been SIMULATED as 'encrypted' by the "
         "ransomtest educational ransomware simulator.\n\n"
         "No real harm has been done:\n"
-        "- Original files remain untouched in this lab_files/ directory.\n"
+        "- Original files may remain untouched in this lab_files/ directory (safe mode), "
+        "or be overwritten only if explicitly requested.\n"
         "- Transformed copies are stored separately in encrypted_files/.\n\n"
         "This tool is strictly for learning DFIR and blue-team analysis.\n"
         "Do NOT run it outside controlled lab environments.\n"
@@ -198,16 +288,38 @@ def simulate_encrypt(
         try:
             ransom_note_path.write_text(ransom_note_content, encoding="utf-8")
             verbose_print(verbose, f"[INFO] Ransom note created at {ransom_note_path}")
+            log_line(
+                reports_dir,
+                {
+                    "event": "RANSOM_NOTE",
+                    "file": str(ransom_note_path),
+                    "mode": "encrypt",
+                },
+                log_format,
+            )
         except Exception as e:
             verbose_print(verbose, f"[ERROR] Could not write ransom note {ransom_note_path}: {e}")
             log_line(
                 reports_dir,
-                f"ERROR | action=write_ransom_note | file={ransom_note_path} | error={e}",
+                {
+                    "event": "ERROR",
+                    "action": "write_ransom_note",
+                    "file": str(ransom_note_path),
+                    "error": str(e),
+                    "mode": "encrypt",
+                },
+                log_format,
             )
 
     log_line(
         reports_dir,
-        f"ENCRYPT | completed | transform={transform_name} | dry_run={dry_run}",
+        {
+            "event": "ENCRYPT_COMPLETED",
+            "transform": transform_name,
+            "dry_run": dry_run,
+            "mode": "encrypt",
+        },
+        log_format,
     )
     verbose_print(verbose, "[INFO] ENCRYPT simulation completed.")
 
@@ -219,6 +331,7 @@ def simulate_restore(
     transform_name: str,
     dry_run: bool,
     verbose: bool,
+    log_format: str,
 ) -> None:
     if not encrypted_dir.is_dir():
         print(f"[ERROR] Encrypted directory does not exist or is not a directory: {encrypted_dir}")
@@ -248,13 +361,39 @@ def simulate_restore(
             enc_content = path.read_text(encoding="utf-8", errors="ignore")
         except Exception as e:
             verbose_print(verbose, f"[ERROR] Could not read {path}: {e}")
-            log_line(reports_dir, f"ERROR | action=read_encrypted | file={path} | error={e}")
+            log_line(
+                reports_dir,
+                {
+                    "event": "ERROR",
+                    "action": "read_encrypted",
+                    "file": str(path),
+                    "error": str(e),
+                    "mode": "restore",
+                },
+                log_format,
+            )
             continue
 
         enc_size = len(enc_content.encode("utf-8"))
         enc_hash = sha256_of_text(enc_content)
 
-        restored_content = reverse_transform_content(enc_content, transform_name)
+        try:
+            restored_content = reverse_transform_content(enc_content, transform_name)
+        except Exception as e:
+            verbose_print(verbose, f"[ERROR] Reverse transform failed for {path}: {e}")
+            log_line(
+                reports_dir,
+                {
+                    "event": "ERROR",
+                    "action": "reverse_transform",
+                    "file": str(path),
+                    "transform": transform_name,
+                    "error": str(e),
+                    "mode": "restore",
+                },
+                log_format,
+            )
+            continue
 
         rest_size = len(restored_content.encode("utf-8"))
         rest_hash = sha256_of_text(restored_content)
@@ -266,23 +405,43 @@ def simulate_restore(
                 verbose_print(verbose, f"[ERROR] Could not write {restored_path}: {e}")
                 log_line(
                     reports_dir,
-                    f"ERROR | action=write_restored | file={restored_path} | error={e}",
+                    {
+                        "event": "ERROR",
+                        "action": "write_restored",
+                        "file": str(restored_path),
+                        "error": str(e),
+                        "mode": "restore",
+                    },
+                    log_format,
                 )
                 continue
 
         log_line(
             reports_dir,
-            (
-                "RESTORE | "
-                f"src_file={path} | dst_file={restored_path} | transform={transform_name} | "
-                f"enc_size={enc_size} | enc_sha256={enc_hash} | "
-                f"rest_size={rest_size} | rest_sha256={rest_hash} | dry_run={dry_run}"
-            ),
+            {
+                "event": "RESTORE",
+                "src_file": str(path),
+                "dst_file": str(restored_path),
+                "transform": transform_name,
+                "enc_size": enc_size,
+                "enc_sha256": enc_hash,
+                "rest_size": rest_size,
+                "rest_sha256": rest_hash,
+                "dry_run": dry_run,
+                "mode": "restore",
+            },
+            log_format,
         )
 
     log_line(
         reports_dir,
-        f"RESTORE | completed | transform={transform_name} | dry_run={dry_run}",
+        {
+            "event": "RESTORE_COMPLETED",
+            "transform": transform_name,
+            "dry_run": dry_run,
+            "mode": "restore",
+        },
+        log_format,
     )
     verbose_print(verbose, "[INFO] RESTORE simulation completed.")
 
@@ -297,14 +456,15 @@ def main() -> None:
 
     if args.mode == "encrypt":
         simulate_encrypt(
-    target_dir=target_dir,
-    encrypted_dir=encrypted_dir,
-    reports_dir=reports_dir,
-    transform_name=args.transform,
-    dry_run=args.dry_run,
-    verbose=args.verbose,
-    overwrite_original=args.overwrite_original,
-)
+            target_dir=target_dir,
+            encrypted_dir=encrypted_dir,
+            reports_dir=reports_dir,
+            transform_name=args.transform,
+            dry_run=args.dry_run,
+            verbose=args.verbose,
+            overwrite_original=args.overwrite_original,
+            log_format=args.log_format,
+        )
     elif args.mode == "restore":
         simulate_restore(
             encrypted_dir=encrypted_dir,
@@ -313,6 +473,7 @@ def main() -> None:
             transform_name=args.transform,
             dry_run=args.dry_run,
             verbose=args.verbose,
+            log_format=args.log_format,
         )
     else:
         print(f"[ERROR] Unsupported mode: {args.mode}")
@@ -321,3 +482,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+    
