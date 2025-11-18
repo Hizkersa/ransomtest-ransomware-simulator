@@ -1,0 +1,9 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Generated ransomware simulation files
+encrypted_files/*.simenc
+restored_files/*
+lab_files/README_RECOVER.txt
+reports/simulation_log.txt
