@@ -1,202 +1,134 @@
-# ransomtest – Ransomware Simulator (Educational & Safe)
+# ransomtest – Educational Ransomware Simulator
 
-`ransomtest` is a **safe, educational ransomware simulator** written in Python.  
-It does **not** implement real-world ransomware, and it **never touches files outside the sandbox** (`lab_files/`).
-
-The simulator helps DFIR students, blue-team analysts, and cybersecurity learners understand:
-
-- How ransomware *logically* behaves  
-- How files are “encrypted” and “restored” in a safe, controlled way  
-- How to analyze DFIR logging (text or JSON)  
-- How to simulate an incident and practice recovery workflows  
-
-This project is intentionally **non-malicious**, **non-destructive**, and **fully reversible**.
+`ransomtest` is a controlled, non-destructive ransomware simulation tool designed for DFIR training, blue-team practice, and cybersecurity education.  
+The simulator operates strictly inside a sandbox directory and uses simple, reversible text transformations to emulate ransomware behavior.
 
 ---
 
-# Safety & Ethical Disclaimer
+## Overview
 
-- This tool is **strictly for educational and defensive training purposes**.
-- It:
-  - Operates only inside a designated sandbox folder (`lab_files/`)
-  - Uses **simple reversible transformations** (Reverse, Base64, XOR)
-  - Performs **no real cryptography**
-  - Never deletes, corrupts, or exfiltrates data
-  - Contains **no networking, persistence, or propagation**
-- The author is **not responsible** for any misuse.
-- Use only in **legal, ethical, controlled lab environments**.
+This project demonstrates the logical workflow of a ransomware incident without using real cryptography or destructive methods.  
+It provides a safe environment for understanding:
 
----
+- File targeting and traversal  
+- Simulated “encryption” using reversible transforms  
+- Ransom note generation  
+- DFIR-oriented logging  
+- Restoration of transformed data  
 
-# Project Goals
-
-- Demonstrate how ransomware-like behavior works in a safe lab
-- Simulate the phases of a ransomware incident:
-  - Target selection
-  - File transformation (“encryption”)
-  - Ransom note creation
-  - DFIR logging
-  - File restoration  
-- Provide a practical tool for:
-  - DFIR practice  
-  - Blue-team training  
-  - Educational demonstrations  
-  - Portfolio-building  
-- Showcase understanding of:
-  - File-handling
-  - Reversible transformations
-  - Logging & traceability  
-  - Secure and ethical coding practices
+All actions are fully contained within controlled directories.
 
 ---
 
-# How It Works (High-Level)
+## Features
 
-## 1. Sandbox Scope
-The simulator only interacts with files inside:
-
-lab_files/
-
-This folder must contain **only dummy test files** (`.txt`, `.log`, etc.).
-
-## 2. Simulated “Encryption”
-- Reads all text files inside `lab_files/`
-- Applies a reversible transform:
+- Sandbox-only operation (`lab_files/`)
+- Reversible transformations:
   - `reverse`
   - `base64`
   - `xor` (requires key)
-- Writes transformed output to:
+- Safe simulation of encryption and decryption
+- Optional overwrite mode for realistic laboratory scenarios
+- DFIR logging in text or JSON format
+- No networking, persistence, propagation, or deletion of system files
 
-encrypted_files/*.simenc
+---
 
-- Optionally: `--overwrite-original`
-- Creates an educational ransom note:
-
-lab_files/README_RECOVER.txt
-
-## 3. Simulated “Decryption”
-Reads from:
-
-encrypted_files/*.simenc
-
-Restores readable files into:
-
-restored_files/
-
-## 4. DFIR Logging
-Every action is logged to:
-
-reports/simulation_log.txt
-
-Two formats supported:
-
-- `--log-format text` (default)
-- `--log-format json`
-
-### JSON Example
-
-```json
-{
-  "timestamp": "2025-11-18T10:33:41Z",
-  "message": "ENCRYPT",
-  "src": "lab_files/report_q4.txt",
-  "dst": "encrypted_files/report_q4.txt.simenc",
-  "transform": "base64",
-  "orig_sha256": "…",
-  "enc_sha256": "…",
-  "dry_run": false
-}
-```
-
-⸻
-
-## CLI Usage Examples
-
-Encrypt (safe mode)
-
-python3 simulator.py --mode encrypt \
-    --transform base64 \
-    --verbose
-
-Restore
-
-python3 simulator.py --mode restore \
-    --transform base64 \
-    --verbose
-
-XOR Mode
-
-python3 simulator.py --mode encrypt \
-    --transform xor \
-    --key "test123" \
-    --verbose
-
-Restore:
-
-python3 simulator.py --mode restore \
-    --transform xor \
-    --key "test123"
-
-Overwrite originals (Lab realism)
-
-python3 simulator.py --mode encrypt \
-    --transform xor \
-    --key "test123" \
-    --overwrite-original
-
-JSON Logging
-
-python3 simulator.py --mode encrypt \
-    --transform base64 \
-    --log-format json
-
-Dry Run (no files written)
-
-python3 simulator.py --mode encrypt \
-    --transform reverse \
-    --dry-run
-
-
-⸻
-
-## Project Structure
-
-```text
+## Directory Structure
+´´´text
 ransomtest-ransomware-simulator/
-├── simulator.py            # Main CLI entrypoint
+├── simulator.py
 ├── crypto_sim/
-│   ├── __init__.py
-│   └── simple_transform.py # reversible transforms (reverse, base64, xor)
-├── lab_files/              # user test files (dummy data only)
-├── encrypted_files/        # simulated encrypted outputs
-├── restored_files/         # restored outputs
+│   ├── init.py
+│   └── simple_transform.py
+├── lab_files/
+├── encrypted_files/
+├── restored_files/
 ├── reports/
-│   └── simulation_log.txt  # DFIR logs
-├── HOW_TO_USE.txt          # beginner-friendly guide
-└── README.md               # main documentation
+│   └── simulation_log.txt
+├── HOW_TO_USE.txt
+└── README.md
+´´´
+---
 
-```
-⸻
+## Usage
 
-## Tech Stack
-	•	Language: Python 3
-	•	Dependencies: Only standard library
-	•	Focus Areas:
-	•	DFIR
-	•	Blue-team training
-	•	Safe ransomware behavior emulation
-	•	Traceability & forensic logging
+### Encrypt files
 
-⸻
+´´´text
+python3 simulator.py –mode encrypt –transform base64
+´´´
+### Restore files
+
+´´´text
+python3 simulator.py –mode restore –transform base64
+´´´
+
+### XOR mode (requires key)
+
+´´´text
+python3 simulator.py –mode encrypt –transform xor –key “yourkey”
+python3 simulator.py –mode restore –transform xor –key “yourkey”
+´´´
+
+### Overwrite original files (lab-only realism)
+
+´´´text
+python3 simulator.py –mode encrypt –transform xor –key “yourkey” –overwrite-original
+´´´
+
+### JSON logging
+
+´´´text
+python3 simulator.py –mode encrypt –log-format json
+´´´
+
+### Dry run (no changes written)
+
+´´´text
+python3 simulator.py –mode encrypt –dry-run
+´´´
+
+---
+
+## Logging Example (JSON)
+
+´´´text
+{
+“timestamp”: “2025-11-18T10:33:41Z”,
+“action”: “ENCRYPT”,
+“src”: “lab_files/report_q4.txt”,
+“dst”: “encrypted_files/report_q4.txt.simenc”,
+“transform”: “base64”,
+“orig_sha256”: “…”,
+“enc_sha256”: “…”,
+“dry_run”: false
+}
+ ´´´
+---
+
+## Supported Transforms
+
+| Transform | Description | Reversible | Key Required |
+|----------|-------------|------------|--------------|
+| reverse  | String reversal | Yes | No |
+| base64   | Base64 encode/decode | Yes | No |
+| xor      | XOR with user-supplied key (hex output) | Yes | Yes |
+
+---
+
+## Requirements
+
+ ´´´text
+- Python 3.x  
+- No external dependencies (standard library only)
+´´´
+
+---
 
 ## License
 
-Creative Commons Attribution-NonCommercial 4.0 International License
-Copyright
-2025 — Sebastián Fuentes
+Licensed under the **Creative Commons Attribution-NonCommercial 4.0 International License**.  
+© 2025 — Sebastián Fuentes.
 
-You may share and adapt for non-commercial use with attribution.
-
-Full license text:
-https://creativecommons.org/licenses/by-nc/4.0/legalcode
-
+See: https://creativecommons.org/licenses/by-nc/4.0/legalcode

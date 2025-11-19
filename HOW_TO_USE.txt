@@ -2,17 +2,18 @@
  RANSOMTEST – HOW TO USE (GUIDE)
 ===========================================
 
-This guide explains how to use the ransomware simulator
-in a simple, safe, and controlled way.
+This guide explains how to safely use the ransomware
+simulator in a controlled lab environment.
 
 ransomtest is an EDUCATIONAL TOOL.
-It ONLY works inside a lab folder (lab_files/)
-and uses reversible, NON-CRYPTOGRAPHIC transforms.
+It ONLY works inside "lab_files/" and uses simple,
+reversible transforms (NOT real ransomware).
 
 You can use it to:
-  ✓ Simulate "encryption" of lab files
-  ✓ Restore them in a safe way
-  ✓ Generate logs for DFIR / blue-team exercises
+  ✓ Simulate file encryption in a sandbox
+  ✓ Restore files safely
+  ✓ Analyze DFIR logs (text or JSON)
+  ✓ Practice incident response workflows
 
 
 ===========================================================
@@ -23,18 +24,18 @@ STEP 1 — Open a terminal and go to the project folder:
 
     cd ~/ransomtest-ransomware-simulator
 
-STEP 2 — Make sure the folders exist:
+STEP 2 — Ensure the main directories exist:
 
     lab_files/
     encrypted_files/
     restored_files/
     reports/
 
-(They should already be there if you cloned the repo.
-If not, create them manually.)
+These are included by default. If not, create them manually:
 
+    mkdir lab_files encrypted_files restored_files reports
 
-STEP 3 — Add TEST files to "lab_files/"
+STEP 3 — Add test files to lab_files/
 
 Example:
 
@@ -43,183 +44,184 @@ Example:
     Customer: Bob" > lab_files/report_q4.txt
 
 IMPORTANT:
-  - Use ONLY dummy / lab data.
-  - The tool is not meant for real production files.
+  - Only use dummy data.
+  - This tool is NOT designed for production files.
 
 
 ===========================================================
-2) SAFE MODE – SIMULATED "ENCRYPTION"
+2) SIMULATED ENCRYPTION (SAFE MODE)
 ===========================================================
 
-In SAFE MODE, original files in lab_files/ are NOT modified.
-The tool creates "encrypted" copies in encrypted_files/.
+This mode DOES NOT modify the original files unless you
+explicitly use --overwrite-original.
 
-STEP 1 — Run the simulator in ENCRYPT mode:
+STEP 1 — Run the simulator:
 
     python3 simulator.py --mode encrypt \
         --transform base64 \
         --verbose
 
-What this does:
+Explanation:
 
-  - Reads files from: lab_files/
-  - Applies a reversible transform (e.g. base64)
-  - Writes simulated encrypted files to:
-        encrypted_files/*.simenc
-  - Creates an educational ransom note:
-        lab_files/README_RECOVER.txt
-  - Logs everything to:
-        reports/simulation_log.txt
+  - Reads from: lab_files/
+  - Applies transform: base64
+  - Writes encrypted copies to: encrypted_files/*.simenc
+  - Creates ransom note: lab_files/README_RECOVER.txt
+  - Logs actions to: reports/simulation_log.txt
 
-After running:
-  - Original file:
-        lab_files/report_q4.txt       (unchanged)
-  - "Encrypted" copy:
-        encrypted_files/report_q4.txt.simenc
-  - Ransom note:
-        lab_files/README_RECOVER.txt
+Original file (unchanged):
+
+    lab_files/report_q4.txt
+
+Simulated encrypted copy:
+
+    encrypted_files/report_q4.txt.simenc
 
 
 ===========================================================
-3) SAFE MODE – SIMULATED "DECRYPTION" / RESTORE
+3) SIMULATED DECRYPTION / RESTORE
 ===========================================================
 
-STEP 1 — Restore from encrypted copies:
+STEP 1 — Restore files:
 
     python3 simulator.py --mode restore \
         --transform base64 \
         --verbose
 
-What this does:
+This reads from:
 
-  - Reads from: encrypted_files/*.simenc
-  - Applies the inverse transform
-  - Writes restored files to:
-        restored_files/
+    encrypted_files/*.simenc
 
-Result:
+And restores to:
 
-  - Restored file:
-        restored_files/report_q4.txt
-
-The content of restored_files/report_q4.txt
-should be IDENTICAL to the original
-lab_files/report_q4.txt (safe mode).
+    restored_files/*.txt
 
 
 ===========================================================
-4) OPTIONAL – OVERWRITE ORIGINALS (MORE REALISTIC)
+4) AVAILABLE TRANSFORMS
 ===========================================================
 
-⚠ WARNING:
-Use ONLY with dummy data in a LAB environment.
+You can choose how the simulator transforms your files:
 
-If you want lab_files/ to "look encrypted"
-(like a real victim’s machine), you can allow
-the simulator to overwrite the original lab files.
+1) reverse
+   - Simple string reversal
+   - Reversible by applying reverse again
 
-STEP 1 — Run ENCRYPT with overwrite:
+    --transform reverse
+
+2) base64
+   - Encodes text in Base64
+   - Reversible with Base64 decode
+
+    --transform base64
+
+3) xor  (NEW — requires key)
+   - XOR-based reversible transform
+   - Output is hex text
+   - Requires: --key "yourpass"
+
+    --transform xor --key "test123"
+
+
+Examples:
+
+    python3 simulator.py --mode encrypt --transform reverse
+    python3 simulator.py --mode encrypt --transform base64
+    python3 simulator.py --mode encrypt --transform xor --key "test123"
+
+
+===========================================================
+5) OVERWRITE ORIGINALS (REALISM MODE)
+===========================================================
+
+⚠ WARNING: LAB USE ONLY ⚠  
+This makes lab_files/ appear "encrypted" like a real attack.
+
+Command:
 
     python3 simulator.py --mode encrypt \
-        --transform base64 \
+        --transform xor \
+        --key "test123" \
         --overwrite-original \
         --verbose
 
-Now:
+What happens:
 
-  - lab_files/report_q4.txt
-        → contains transformed (Base64) content
-  - encrypted_files/report_q4.txt.simenc
-        → encrypted copy
-  - restored_files/ (after restore)
-        → contains the recovered plaintext
+  - lab_files/report_q4.txt becomes XOR-encrypted (hex)
+  - encrypted_files/ stores the encrypted copy
+  - restore still works normally
 
-You can still restore using:
+Restore example:
 
     python3 simulator.py --mode restore \
+        --transform xor \
+        --key "test123"
+
+
+===========================================================
+6) JSON LOG MODE (DFIR ADVANCED)
+===========================================================
+
+You can choose between:
+
+  --log-format text   (default)
+  --log-format json   (recommended for DFIR)
+
+Example (encrypt JSON logs):
+
+    python3 simulator.py --mode encrypt \
         --transform base64 \
-        --verbose
+        --log-format json
+
+Example JSON entry:
+
+    {
+      "timestamp": "2025-11-18T10:33:41Z",
+      "message": "ENCRYPT",
+      "src": "lab_files/report_q4.txt",
+      "dst": "encrypted_files/report_q4.txt.simenc",
+      "transform": "base64",
+      "orig_sha256": "...",
+      "enc_sha256": "...",
+      "dry_run": false
+    }
 
 
 ===========================================================
-5) AVAILABLE TRANSFORMS & FLAGS
+7) DRY RUN (NO FILES ARE WRITTEN)
 ===========================================================
 
-TRANSFORMS:
+Preview actions without modifying anything:
 
-    --transform reverse
-        → reverses the file content (apply twice to restore)
+    python3 simulator.py --mode encrypt \
+        --transform base64 \
+        --dry-run
 
-    --transform base64
-        → Base64 encode (restore by Base64 decode)
-
-FLAGS:
-
-    --mode encrypt
-        → simulate the "encryption" phase
-
-    --mode restore
-        → simulate the "decryption / restore" phase
-
-    --verbose
-        → show detailed output in the terminal
-
-    --dry-run
-        → show what WOULD happen, but do NOT write files
-
-    --overwrite-original
-        → overwrite files inside lab_files/
-           (for realism; lab use ONLY)
+Useful for training or verifying behavior safely.
 
 
 ===========================================================
-6) LOGS FOR DFIR / BLUE-TEAM EXERCISES
+8) TROUBLESHOOTING
 ===========================================================
-
-All actions are logged to:
-
-    reports/simulation_log.txt
-
-Example log entry (simplified):
-
-    2025-11-18T10:26:46+00:00 | ENCRYPT |
-    src_file=lab_files/report_q4.txt |
-    dst_file=encrypted_files/report_q4.txt.simenc |
-    transform=base64 |
-    orig_size=63 | enc_size=84 |
-    orig_sha256=... | enc_sha256=...
-
-You can use this log to:
-
-  ✓ Reconstruct the incident timeline
-  ✓ Compare original vs encrypted vs restored hashes
-  ✓ Practice DFIR reasoning and reporting
-
-
-===========================================================
-7) TROUBLESHOOTING
-===========================================================
-
-If you see: "Target directory does not exist"
-    → Check that lab_files/ exists and has files.
 
 If you see: "Unsupported transform"
-    → Use: --transform reverse   or   --transform base64
+    → Valid: reverse, base64, xor
 
-If you see: "Permission denied"
-    → Ensure you have write permissions in the project folder.
+If you see: "XOR requires key"
+    → Add: --key "mypassword"
 
-If nothing seems to happen:
-    → Try with --verbose to see detailed steps:
-        python3 simulator.py --mode encrypt --verbose
+If encrypted files don't restore:
+    → Ensure transform + key match exactly.
+
+If nothing happens:
+    → Try using --verbose
 
 
 ===========================================================
-8) MORE INFORMATION
+9) MORE INFORMATION
 ===========================================================
 
-For a more detailed explanation of the project,
-see the main README on GitHub:
+Full documentation and code:
 
     https://github.com/Hizkersa/ransomtest-ransomware-simulator
 
